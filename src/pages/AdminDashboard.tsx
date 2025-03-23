@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Sidebar } from '../components/layout/Sidebar';
 import { TopBar } from '../components/layout/TopBar';
@@ -6,6 +6,7 @@ import { ValidEmailsTable } from '../components/tables/ValidEmailsTable';
 import { BlacklistedDomainsTable } from '../components/tables/BlacklistedDomainsTable';
 import { BlacklistedEmailsTable } from '../components/tables/BlacklistedEmailsTable';
 import { BulkAddModal } from '../components/modals/BulkAddModal';
+import toast from 'react-hot-toast';
 
 type View = 'valid-emails' | 'blacklisted-domains' | 'blacklisted-emails';
 
@@ -15,11 +16,19 @@ interface Domain {
   createdAt: string;
 }
 
+interface BlacklistedEmail {
+  _id: string;
+  email: string;
+  createdAt: string;
+}
+
 function AdminDashboard() {
   const { user, logout } = useAuth();
   const [currentView, setCurrentView] = useState<View>('valid-emails');
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [editDomain, setEditDomain] = useState<Domain | null>(null);
+  const [editEmail, setEditEmail] = useState<BlacklistedEmail | null>(null);
+  const tableRef = useRef<{ refreshData?: () => void }>({});
 
   const handleBulkAdd = async (items: string) => {
     const token = localStorage.getItem('token');
@@ -33,8 +42,8 @@ function AdminDashboard() {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({ domain: items }),
-            credentials: "include"
+            credentials: 'include',
+            body: JSON.stringify({ domain: items })
           });
           
           if (!response.ok) {
@@ -42,8 +51,11 @@ function AdminDashboard() {
           }
           
           setEditDomain(null);
+          toast.success('Domain updated successfully');
+          tableRef.current.refreshData?.();
         } catch (error) {
           console.error('Error updating domain:', error);
+          toast.error('Failed to update domain');
         }
       } else {
         const domains = items.split(',').map(domain => ({ domain: domain.trim() }));
@@ -54,42 +66,81 @@ function AdminDashboard() {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({ domains }),
-            credentials: "include",
+            credentials: 'include',
+            body: JSON.stringify({ domains })
           });
           
           if (!response.ok) {
             throw new Error('Failed to add domains');
           }
+          
+          toast.success('Domains added successfully');
+          tableRef.current.refreshData?.();
         } catch (error) {
           console.error('Error adding domains:', error);
+          toast.error('Failed to add domains');
+        }
+      }
+    } else if (currentView === 'blacklisted-emails') {
+      if (editEmail) {
+        try {
+          const response = await fetch(`http://localhost:5000/api/v1/admin/updateBlackListedEmail/${editEmail._id}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            credentials: 'include',
+            body: JSON.stringify({ email: items })
+          });
+          
+          if (!response.ok) {
+            throw new Error('Failed to update email');
+          }
+          
+          setEditEmail(null);
+          toast.success('Email updated successfully');
+          tableRef.current.refreshData?.();
+        } catch (error) {
+          console.error('Error updating email:', error);
+          toast.error('Failed to update email');
+        }
+      } else {
+        const emails = items.split(',').map(email => ({ email: email.trim() }));
+        try {
+          const response = await fetch('http://localhost:5000/api/v1/admin/addBlacklistedEmail', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            credentials: 'include',
+            body: JSON.stringify({ emails })
+          });
+          
+          if (!response.ok) {
+            throw new Error('Failed to add emails');
+          }
+          
+          toast.success('Emails added successfully');
+          tableRef.current.refreshData?.();
+        } catch (error) {
+          console.error('Error adding emails:', error);
+          toast.error('Failed to add emails');
         }
       }
     }
   };
 
-  const handleDelete = async (id: string) => {
-    const token = localStorage.getItem('token');
-    
-    try {
-      const response = await fetch(`http://localhost:5000/api/v1/admin/deleteBlackListedDomain/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        credentials: "include"
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to delete domain');
-      }
-    } catch (error) {
-      console.error('Error deleting domain:', error);
-    }
+  const handleEditDomain = (domain: Domain) => {
+    setEditDomain(domain);
+    setEditEmail(null);
+    setShowBulkModal(true);
   };
 
-  const handleEdit = (domain: Domain) => {
-    setEditDomain(domain);
+  const handleEditEmail = (email: BlacklistedEmail) => {
+    setEditEmail(email);
+    setEditDomain(null);
     setShowBulkModal(true);
   };
 
@@ -101,10 +152,11 @@ function AdminDashboard() {
       case 'blacklisted-domains':
         return (
           <BlacklistedDomainsTable
-            onEdit={handleEdit}
-            onDelete={handleDelete}
+            ref={tableRef}
+            onEdit={handleEditDomain}
             onAdd={() => {
               setEditDomain(null);
+              setEditEmail(null);
               setShowBulkModal(true);
             }}
           />
@@ -113,8 +165,11 @@ function AdminDashboard() {
       case 'blacklisted-emails':
         return (
           <BlacklistedEmailsTable
+            ref={tableRef}
+            onEdit={handleEditEmail}
             onAdd={() => {
               setEditDomain(null);
+              setEditEmail(null);
               setShowBulkModal(true);
             }}
           />
@@ -139,13 +194,14 @@ function AdminDashboard() {
         onClose={() => {
           setShowBulkModal(false);
           setEditDomain(null);
+          setEditEmail(null);
         }}
         onSubmit={handleBulkAdd}
         type={currentView === 'blacklisted-domains' ? 'domains' : 'emails'}
-        editData={editDomain}
+        editData={editDomain || editEmail}
       />
     </div>
   );
 }
 
-export default AdminDashboard;
+export default AdminDashboard

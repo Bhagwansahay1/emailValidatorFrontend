@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import { X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { EditIcon, X } from 'lucide-react';
 
 interface Domain {
   _id: string;
-  domain: string;
+  domain?: string;
   createdAt: string;
+  email?:string
 }
 
 interface BulkAddModalProps {
@@ -17,6 +18,14 @@ interface BulkAddModalProps {
 
 export function BulkAddModal({ isOpen, onClose, onSubmit, type, editData }: BulkAddModalProps) {
   const [items, setItems] = useState(editData ? editData.domain : '');
+  useEffect(()=>{
+    console.log(items,"items", editData,"data");
+    setItems('')
+    if(editData){
+      const editValue= editData?.domain ? editData?.domain:editData?.email
+      setItems(editValue)
+    }
+  },[editData])
 
   if (!isOpen) return null;
 
